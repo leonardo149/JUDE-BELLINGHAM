@@ -1,17 +1,75 @@
 const BOARD_SIZE = 20;
 const cellSize = calculateCellSize();
 let board;
+let player;
+let ghosts = [];
+let ghostSpeed = 2149;
+let  isGameRunning = false;
+let ghostInterval;
+let score = 0;
+
 
 document.getElementById('intro-screen').addEventListener('click',startGame)
+document.addEventListener('keydown',(event)=>{
+    if(!isGameRunning){
+        return;
+    }
+    switch(event.key){
+        case 'ArrowUp':
+            player.move(0,-1);//liikutaan ylöspäin
+        break;
+
+        case 'ArrowDown':
+            player.move(0, 1);
+        break;
+
+        case 'ArrowLeft':
+            player.move(-1, 0);
+        break;
+
+        case 'ArrowRight':
+            player.move(1,0);
+        break;  
+        
+        case'w':
+            shootAt(player.x,player.y -1);
+        break;
+
+        case's':
+            shootAt(player.x, player.y + 1)
+        break;
+
+        case 'a':
+            shootAt(player.x - 1, player.y);
+        break;
+
+        case 'd':
+            shootAt(player.x + 1, player.y);
+        break;
+
+            
+    }
+    event.preventDefault();
+})
 
 function startGame(){
     console.log('Klikattu')
     document.getElementById('intro-screen').style.display = 'none';
     document.getElementById('game-screen').style.display = 'block';
+
+    player = new Player(0,0);
     
     board = generateRandomBoard();
 
     drawBoard(board);
+
+    setTimeout(()=>{
+        ghostInterval = setInterval(moveGhosts,ghostSpeed);
+    }, 1000);
+
+    isGameRunning = true;
+    score = 0
+    updateScoreBoard(0);
 }
 
 function generateRandomBoard(){
@@ -31,6 +89,15 @@ function generateRandomBoard(){
 
     const [playerX, playerY] = randomEmptyPosition(newBoard);
     setCell(newBoard,playerX,playerY, 'P');
+    player.x = playerX
+    player.y = playerY
+
+    ghosts = [];
+    for(let i = 0; i < 5 ; i++){
+        const [ghostX, ghostY] = randomEmptyPosition(newBoard);
+        setCell(newBoard,ghostX, ghostY, 'G');
+        ghosts.push(new Ghost(ghostX,ghostY));
+    }
     
     return newBoard;
 
@@ -39,6 +106,7 @@ function generateRandomBoard(){
 function drawBoard(board){
     const gameBoard = document.getElementById('game-board');
     gameBoard.style.gridTemplateColumns = `repeat(${BOARD_SIZE},1fr)`;
+    gameBoard.innerHTML = "";
 
     for(let y = 0; y < BOARD_SIZE; y++){
         for(let x = 0; x < BOARD_SIZE; x++){
@@ -50,6 +118,16 @@ function drawBoard(board){
                 cell.classList.add('wall');
                 }else if (getCell(board,x,y) === 'P'){
                     cell.classList.add('player');
+                }else if(getCell(board,x,y) === 'G'){
+                    cell.classList.add('ghost');
+                    
+            }
+            else if (getCell(board,x,y)==='B'){
+                cell.classList.add('bullet');
+                setTimeout(()=>{
+                    setCell(board,x,y,'');
+                    drawBoard(board);
+                },400);
             }
 
             gameBoard.appendChild(cell);
@@ -125,4 +203,138 @@ function randomEmptyPosition(board){
 
 function setCell(board, x, y, value){
     board[y][x] = value;
+}
+
+function shootAt(x,y){
+    if(getCell(board,x,y) === 'W'){
+        return;
+    }
+
+    const ghostIndex = ghosts.findIndex(ghost => ghost.x === x && ghost.y === y);
+
+    if(ghostIndex !== -1){
+        ghosts.splice(ghostIndex,1);
+        updateScoreBoard(20);
+    }
+
+    setCell(board,x,y,'B');
+    drawBoard(board);
+
+    if(ghosts.length === 0){
+        endGame();
+    }
+}
+
+function moveGhosts(){
+    const oldGhosts = ghosts.map(ghost =>({x:ghost.x, y:ghost.y}));
+
+    ghosts.forEach(ghost =>{
+        const newPosition = ghost.moveGhostTowardsPLayer(player,board);
+        ghost.x = newPosition.x;
+        ghost.y = newPosition.y;
+
+        setCell(board,ghost.x, ghost.y,'G');
+
+        oldGhosts.forEach(ghost =>{
+            setCell(board,ghost.x,ghost.y,'');
+        });
+        
+        ghosts.forEach(ghost =>{
+            setCell(board,ghost.x,ghost.y,'G')
+        })
+
+
+        drawBoard(board);
+
+        if(ghost.x === player.x && ghost.y === player.y){
+            endGame();
+            return;
+        }
+    });
+}
+
+function endGame(){
+    alert('Game Over!');
+    isGameRunning = false;
+    document.getElementById('intro-screen').style.display = 'block';
+    document.getElementById('game-screen').style.display = 'none';
+    clearInterval(ghostInterval);
+}
+
+function updateScoreBoard(points){
+    const ScoreBoard = document.getElementById('score-board');
+    score += points 
+    ScoreBoard.textContent = `pisteet:${score}`;
+
+}
+
+class Player{
+    constructor(x,y){
+        this.x = x;
+        this.y = y;
+    }
+    move(deltaX,deltaY ){
+        
+        //missä pelaaja on tällä hetkellä
+        const currentX = player.x;
+        const currentY = player.y;
+
+        //Uusi sijainti pelaajalle
+        const newX = currentX + deltaX;
+        const newY = currentY + deltaY;
+
+        if(getCell(board, newX, newY) === ''){
+       //Annetaan pelaajalle uusi sijainti
+        player.x = newX;
+        player.y = newY;
+
+        //poistetaan vanha pelaaja pelilaudalta
+        setCell(board,currentX,currentY,'');
+        //asetetaan pelaaja pelilaudalle
+        setCell(board,newX,newY,'P');
+        //piirretään pelilauta uusiksi
+        drawBoard(board);
+
+        }    
+    }
+}
+
+class Ghost{
+    constructor(x,y){
+        this.x = x;
+        this.y = y;
+    }
+
+    moveGhostTowardsPLayer(player,board){
+        let dx = player.x - this.x;
+        let dy = player.y - this.y;
+
+        let moves = [];
+
+        if(Math.abs(dx) > Math.abs(dy)){
+            if(dx > 0) moves.push({x:this.x +1, y:this.y});
+            else moves.push({x:this.x -1, y:this.y});
+
+            if(dy > 0) moves.push({x:this.x, y:this.y +1});
+            else moves.push({x:this.x, y:this.y -1});
+        }
+        else
+        {
+            if(dy > 0) moves.push({x:this.x, y:this.y +1});
+            else moves.push({x:this.x, y:this.y -1});
+
+            if(dx > 0) moves.push({x:this.x +1, y:this.y});
+            else moves.push({x:this.x -1, y:this.y});
+
+        }
+
+        for(let move of moves){
+            if(getCell(board,move.x, move.y) === '' || getCell(board, move.x,move.y) === 'P'){
+                return move;
+            }
+        }
+
+        return{x:this.x, y:this.y};
+        
+    }
 }
